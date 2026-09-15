@@ -15,6 +15,17 @@ cmake -S . -B build && cmake --build build -j
 No build type. `-DCMAKE_BUILD_TYPE=Release` defines `NDEBUG`, which compiles `DEGRADED_PATH_ALERT`
 out and blinds every degrade-path gate. CI builds both flavours; locally, use the plain one.
 
+## Windows setup（本 fork 增补）
+
+上游实际只验收 macOS/Linux（README 的 MSVC 支持声明与源码不符）。本 fork 以 **VS 自带 Clang 借用
+`C:/mingw64` 头库**的方式产出全静态 Windows exe。**完整重建命令、补丁清单、已知弱化和
+症状→根因→解法的踩坑速查表在 [docs/windows-build.md](docs/windows-build.md)**：在 Windows 上
+构建、构建/运行故障疑似平台相关（worker 线程段错误、DLL 入口点错误、缓存写失败、cmd 噪音），
+或要移植新的 POSIX 调用时，先读它再动手。
+
+两条硬规则：**MinGW-Builds GCC 15.2 产物在解析池必崩，一律用 Clang**；**链接必须 `-static`**
+（PATH 里的旧 `libstdc++-6.dll` 会劫持加载并报入口点缺失）。
+
 ## Test
 
 ```bash
