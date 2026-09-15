@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -778,7 +779,7 @@ inline std::string renderTestHopBlock( const IngestResult& ing, const TestHop& h
 
     char*       buf = nullptr;
     std::size_t sz  = 0;
-    std::FILE*  m   = open_memstream( &buf, &sz );
+    std::FILE*  m   = rwMemstreamOpen( &buf, &sz );
     if( !m )
     {
         DEGRADED_PATH_ALERT( "renderTestHopBlock: open_memstream failed — hop block omitted" );
@@ -798,7 +799,7 @@ inline std::string renderTestHopBlock( const IngestResult& ing, const TestHop& h
             hop.rows[i].via == TestHopVia::Callee ? "callee" : "basename" );
     }
     rw::emitRaw( m, "</test_hop>" );
-    std::fflush( m );  std::fclose( m );
+    rwMemstreamClose( m, &buf, &sz );
 
     std::string out;
     if( buf ) { out.assign( buf, sz );  std::free( buf ); }
@@ -817,7 +818,7 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
 
     char*       buf = nullptr;
     std::size_t sz  = 0;
-    std::FILE*  m   = open_memstream( &buf, &sz );
+    std::FILE*  m   = rwMemstreamOpen( &buf, &sz );
     if( !m )
     {
         DEGRADED_PATH_ALERT( "renderTraceBlock: open_memstream failed — trace block omitted" );
@@ -859,7 +860,7 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
         rw::emitTo( m, "<skipped p=\"{}\" line=\"{}\"/>", ex( sk->path ).c_str(), sk->line );
     }
     rw::emitRaw( m, "</trace>" );
-    std::fflush( m );  std::fclose( m );
+    rwMemstreamClose( m, &buf, &sz );
     std::string out;
     if( buf ) { out.assign( buf, sz );  std::free( buf ); }
     return out;
@@ -1085,7 +1086,7 @@ inline FromTraceResult fromTraceBundleText( const IngestResult& ing, const Graph
     if( !part.suspects.empty() )
     {
         char*       buf = nullptr;  std::size_t sz = 0;
-        std::FILE*  m   = open_memstream( &buf, &sz );
+        std::FILE*  m   = rwMemstreamOpen( &buf, &sz );
         if( m )
         {
             packSignatures( m, ing, rank, int( servedOrder.size() ), in.sigLadderBudgetBytes, /*metrics=*/true,
@@ -1103,7 +1104,7 @@ inline FromTraceResult fromTraceBundleText( const IngestResult& ing, const Graph
                         &rank );                                      // the served body's CUT <calls> ordered by the TRACE's own rank
                                                                        // (traceRankOf): a callee that is ITSELF a frame of this trace
                                                                        // scores positive, so the edge the trace walked survives the cut.
-            std::fflush( m );  std::fclose( m );
+            rwMemstreamClose( m, &buf, &sz );
             if( buf ) { whole.append( buf, sz );  std::free( buf ); }
         }
         else

@@ -3,6 +3,7 @@
 #error "ingest_cache.h is a SECTION of src/ingest.cpp's translation unit - include it only from ingest.cpp (see the ingest-family split note there)"
 #endif
 
+#include "infra/posixcompat.h"   // pread / O_CLOEXEC —— Windows 兼容层
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -2553,7 +2554,7 @@ inline void saveCache( const std::string& path, std::string_view rootDir, const 
         rw::emitTo( stderr, "ripwire: cache {}: write failed (short write; disk full?) — old cache kept, this run was parsed from source\n", path.c_str() );
         return;
     }
-    if( std::rename( tmp.c_str(), path.c_str() ) != 0 )
+    if( rwRenameReplace( tmp.c_str(), path.c_str() ) != 0 )
     {
         std::remove( tmp.c_str() );   // clean up on failure
         DEGRADED_PATH_ALERT( "ingest: saveCache rename(tmp -> cache) failed — old cache preserved" );

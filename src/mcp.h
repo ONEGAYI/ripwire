@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -344,7 +345,7 @@ struct McpDispatchPolicy
 inline std::string mcpCanonRoot( const std::string& root )
 {
     char buf[ PATH_MAX ];
-    if( ::realpath( root.c_str(), buf ) )
+    if( rwRealpath( root.c_str(), buf ) )
     {
         return std::string( buf );
     }

@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -547,7 +548,7 @@ inline LintResult computePlanLint( const std::string& fileArg )
     std::string absFile;
     {
         char        resolved[ PATH_MAX ];
-        const char* rp = ::realpath( fileArg.c_str(), resolved );
+        const char* rp = rwRealpath( fileArg.c_str(), resolved );
         absFile        = rp ? std::string( resolved ) : std::filesystem::absolute( fileArg ).lexically_normal().string();
     }
     const std::string parentDir = std::filesystem::path( absFile ).parent_path().string();

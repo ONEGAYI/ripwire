@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"   // Windows 兼容层
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -354,7 +355,7 @@ inline std::string wrapCommandToken( const std::string_view executablePath )
         }
         std::error_code ec;
         const fs::path  candidate = fs::path( std::string( dir ) ) / "ripwire";
-        if( fs::is_regular_file( candidate, ec ) && !ec && ::access( candidate.c_str(), X_OK ) == 0 )
+        if( fs::is_regular_file( candidate, ec ) && !ec && ::access( candidate.string().c_str(), X_OK ) == 0 )
         {
             return "ripwire";
         }

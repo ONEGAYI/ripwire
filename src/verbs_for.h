@@ -3,6 +3,7 @@
 #error "verbs_for.h is a SECTION of src/main.cpp's translation unit - include it only from main.cpp (see the verb-family split note there)"
 #endif
 
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include "forpage.h"    // L-W: the --for --limit=N file page, coverage=, the thin rule and the widening next=
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
@@ -1384,7 +1385,7 @@ inline int emitForLensJson( std::FILE* out, const std::string& header, const For
             return 0;
         }
         packSigs( jm, sigsBudget, &sigsCapped, &sigsDroppedPositive, &jsonShownIds );
-        std::fflush( jm );  std::fclose( jm );
+        rwMemstreamClose( jm, &jbuf, &jsz );
         if( jbuf ) { sigsJson.assign( jbuf, jsz );  std::free( jbuf ); }
     }
 
@@ -2453,7 +2454,7 @@ std::optional<int> runForLens( const MainDispatch& d )
             if( std::FILE* lm = rw::openChargeBuffer( &lbuf, &lsz ) )
             {
                 packLego( lm, ing, legoScoped, lensRank, 12, redactPtr, impurePtr, kNoNode, /*withPaths=*/true, flRootArg );
-                std::fflush( lm );  std::fclose( lm );
+                rwMemstreamClose( lm, &lbuf, &lsz );
                 if( lbuf ) { legoStr.assign( lbuf, lsz );  std::free( lbuf ); }
                 legoPreRendered = true;
             }
@@ -2469,7 +2470,7 @@ std::optional<int> runForLens( const MainDispatch& d )
             if( std::FILE* cm = rw::openChargeBuffer( &cbuf, &csz ) )
             {
                 packCompose( cm, ing, g.composeEdges, lensSurfaceIds );
-                std::fflush( cm );  std::fclose( cm );
+                rwMemstreamClose( cm, &cbuf, &csz );
                 if( cbuf ) { composeStr.assign( cbuf, csz );  std::free( cbuf ); }
                 composePreRendered = true;
             }
@@ -2490,7 +2491,7 @@ std::optional<int> runForLens( const MainDispatch& d )
             if( std::FILE* rm = rw::openChargeBuffer( &rbuf, &rsz ) )
             {
                 packRoutes( rm, ing, g.routeEdges, lensSurfaceIds );
-                std::fflush( rm );  std::fclose( rm );
+                rwMemstreamClose( rm, &rbuf, &rsz );
                 if( rbuf ) { routeStr.assign( rbuf, rsz );  std::free( rbuf ); }
                 routePreRendered = true;
             }
@@ -2639,7 +2640,7 @@ std::optional<int> runForLens( const MainDispatch& d )
                                 &shownSigIds,                                // lane 2: the rows actually emitted — the tail excludes THESE files
                                 &forSigsCapped,                              // did the ladder fire? — the budget_bytes= clause rides only then
                                 forTopRowNext );                             // L-W: the widening page on a thin answer, else the body
-                std::fflush( sm );  std::fclose( sm );
+                rwMemstreamClose( sm, &sbuf, &ssz );
                 if( sbuf ) { sigsStr.assign( sbuf, ssz );  std::free( sbuf ); }
                 sigsPreRendered = true;
             }

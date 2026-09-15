@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 
 
@@ -49,7 +50,7 @@ namespace wsdetail
     inline std::string realOf( const std::string& p )
     {
         char buf[ PATH_MAX ];
-        return ::realpath( p.c_str(), buf ) ? std::string( buf ) : p;
+        return rwRealpath( p.c_str(), buf ) ? std::string( buf ) : p;
     }
 
     // split a string on `delim` into its whole segments (no empties — a run of delimiters or a

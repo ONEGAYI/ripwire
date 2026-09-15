@@ -800,6 +800,90 @@ std::string runCaptureText( RunCapture& cap )
     return text;
 }
 
+#if defined( _WIN32 )
+// Windows 等价实现：CreateProcess 起 cmd.exe /c（shell 语义），stdout/stderr 在句柄级合并进同一
+// 管道、stdin 悬空（对齐 /dev/null），PeekNamedPipe 轮询排水，超时 TerminateProcess。与 POSIX 版
+// 的两个已声明弱化：进程组只杀直系进程（孤孙子进程不追杀）；杀后无 drain 窗口。
+RunCapture runCommandCapture( const std::string& cmd, std::uint32_t timeoutSec )
+{
+    RunCapture cap;
+    SECURITY_ATTRIBUTES sa{ sizeof( SECURITY_ATTRIBUTES ), nullptr, TRUE };
+    HANDLE readEnd = nullptr;
+    HANDLE writeEnd = nullptr;
+    if( !CreatePipe( &readEnd, &writeEnd, &sa, 0 ) )
+    {
+        cap.isSpawnFailed = true;
+        return cap;
+    }
+    SetHandleInformation( readEnd, HANDLE_FLAG_INHERIT, 0 );
+
+    const auto t0 = std::chrono::steady_clock::now();
+    std::string cmdline = "cmd.exe /c " + cmd;
+    STARTUPINFOA si{};
+    si.cb         = sizeof( si );
+    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.hStdInput  = nullptr;      // 悬空 stdin：命令不得读终端（对齐 /dev/null 语义）
+    si.hStdOutput = writeEnd;
+    si.hStdError  = writeEnd;     // 两流同一管道：interleaved，如同终端所见
+    PROCESS_INFORMATION pi{};
+    if( !CreateProcessA( nullptr, cmdline.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+                         nullptr, nullptr, &si, &pi ) )
+    {
+        CloseHandle( readEnd );
+        CloseHandle( writeEnd );
+        cap.isSpawnFailed = true;
+        return cap;
+    }
+    CloseHandle( writeEnd );      // 父端只持读端；EOF 才可能到达
+
+    const std::int64_t timeoutMs = std::int64_t( timeoutSec ) * 1000;
+    char               buf[ 65536 ];
+    for( ;; )
+    {
+        DWORD avail = 0;
+        if( !PeekNamedPipe( readEnd, nullptr, 0, nullptr, &avail, nullptr ) )
+        {
+            break;               // 管道断：所有写端关闭（EOF）
+        }
+        if( avail > 0 )
+        {
+            DWORD got = 0;
+            const DWORD ask = avail < sizeof( buf ) ? avail : static_cast<DWORD>( sizeof( buf ) );
+            if( !ReadFile( readEnd, buf, ask, &got, nullptr ) || got == 0 ) { break; }
+            cap.totalBytes += got;
+            runCaptureAppend( cap, buf, std::size_t( got ) );
+            continue;
+        }
+        const std::int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       std::chrono::steady_clock::now() - t0 ).count();
+        if( nowMs >= timeoutMs )
+        {
+            cap.isTimedOut = true;
+            TerminateProcess( pi.hProcess, EXIT_FAILURE );
+            break;
+        }
+        Sleep( 20 );
+    }
+    WaitForSingleObject( pi.hProcess, cap.isTimedOut ? 5000 : INFINITE );
+    DWORD exitCode = STILL_ACTIVE;
+    GetExitCodeProcess( pi.hProcess, &exitCode );
+    if( cap.isTimedOut )
+    {
+        cap.termSignal = 9;      // 对齐 SIGKILL 语义
+    }
+    else
+    {
+        cap.isExitedNormally = true;
+        cap.exitCode         = static_cast<int>( exitCode );
+    }
+    cap.durationMs = static_cast<std::uint64_t>( std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now() - t0 ).count() );
+    CloseHandle( pi.hProcess );
+    CloseHandle( pi.hThread );
+    CloseHandle( readEnd );
+    return cap;
+}
+#else
 // fork/exec `sh -c CMD` in its own process group, drain the pipe under a poll() deadline, SIGKILL the whole
 // group at the cap, and decode the exit honestly. Zero new dependencies — POSIX only (G3/G5).
 RunCapture runCommandCapture( const std::string& cmd, std::uint32_t timeoutSec )
@@ -907,6 +991,7 @@ RunCapture runCommandCapture( const std::string& cmd, std::uint32_t timeoutSec )
     }
     return cap;
 }
+#endif  // _WIN32 runCommandCapture
 
 // split the captured text into its NON-EMPTY lines (views into `text`) — wsdetail::segmentsOf is the shared
 // split primitive (workspace.h), reused rather than re-rolled. Blank lines carry no signal for either the

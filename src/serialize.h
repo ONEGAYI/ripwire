@@ -3,6 +3,7 @@
 // serialize.h — minified, escaped XML serialization. Streamed through a 64 KB
 // buffer (no whole-document string), terse schema, every name/path XML-escaped.
 
+#include "infra/posixcompat.h"
 #include "infra/emit.h"  // rw::formatTo — snprintf's shape kept (stack buffer, snprintf's return)
 #include <format>          // std::format_to_n — the appendf lambdas append through it directly
 #include "model.h"
@@ -1275,7 +1276,7 @@ inline std::FILE* openChargeBuffer( char** bufOut, std::size_t* sizeOut ) noexce
     {
         return nullptr; // ENOMEM-class, on demand, non-release only
     }
-    return open_memstream( bufOut, sizeOut );
+    return rwMemstreamOpen( bufOut, sizeOut );
 }
 
 // ── §B4b: the <ctx> WRAPPER RULE for a verb that appends a section beside serialize()'s root ─────────────
@@ -1332,8 +1333,7 @@ inline ChargedSection chargeSection( RenderFn&& render, double bytesPerToken )
         return sec;
     }
     render( mem );
-    std::fflush( mem );
-    std::fclose( mem );
+    rwMemstreamClose( mem, &buf, &sz );
     if( buf ) { sec.xml.assign( buf, sz );  std::free( buf ); }
     sec.tokens     = tokensForEmittedBytes( sec.xml.size(), bytesPerToken );
     sec.isRendered = true;
@@ -2985,8 +2985,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
         return;
     }
 
-    std::fflush( childMem );
-    std::fclose( childMem );
+    rwMemstreamClose( childMem, &childBuf, &childSz );
     std::string childrenStr;
     if( childBuf ) { childrenStr.assign( childBuf, childSz );  std::free( childBuf ); }
 
@@ -7561,8 +7560,7 @@ inline void serializeJson( std::FILE* out, const IngestResult& ing, const std::v
         }
         return;
     }
-    std::fflush( rowsMem );
-    std::fclose( rowsMem );
+    rwMemstreamClose( rowsMem, &rowsBuf, &rowsSz );
     std::string rowsStr;
     if( rowsBuf ) { rowsStr.assign( rowsBuf, rowsSz );  std::free( rowsBuf ); }
 
@@ -7581,7 +7579,7 @@ inline void serializeJson( std::FILE* out, const IngestResult& ing, const std::v
         if( std::FILE* pm = openChargeBuffer( &pbuf, &psz ) )
         {
             emitHeader( pm, mapEstTokens );
-            std::fflush( pm );  std::fclose( pm );
+            rwMemstreamClose( pm, &pbuf, &psz );
             headerBytes = psz;
             std::free( pbuf );
         }

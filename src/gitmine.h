@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -218,8 +219,19 @@ inline std::string sinceUnresolvedRefusal( std::string_view value )
 // the G3 byte-safe line reader every git pipe in this header uses: no fixed buffer to split a long path on
 // (churnjoincheck's G3 arm forbids fgets here), a high byte never sign-changed. Lines are re-joined with the
 // '\n' the reader consumed, so multi-line callers (crossref.h, the rename map) read exactly what fgets gave them.
-inline std::string popenTrimmed( const std::string& cmd )
+inline std::string popenTrimmed( const std::string& cmdIn )
 {
+#if defined( _WIN32 )
+    // cmd.exe 不认 POSIX 的 /dev/null：静默重定向逐个替换为 NUL，消除每次 git 探测的
+    // "The system cannot find the path specified" stderr 噪音（探测本身走同样的降级路径）。
+    std::string cmd = cmdIn;
+    for( std::size_t pos = 0; ( pos = cmd.find( "2>/dev/null", pos ) ) != std::string::npos; pos += 5 )
+    {
+        cmd.replace( pos, 11, "2>NUL" );
+    }
+#else
+    const std::string& cmd = cmdIn;
+#endif
     std::FILE* pipe = popen( cmd.c_str(), "r" );
     if( !pipe )
     {
@@ -706,7 +718,7 @@ inline std::string gitRepoToplevel( const std::string& absDir )
         if( probe.isStarted && probe.status == 0 && !probe.lines.empty() )
         {
             char resolved[ PATH_MAX ];
-            top = ::realpath( probe.lines.front().c_str(), resolved ) ? std::string{ resolved } : probe.lines.front();
+            top = rwRealpath( probe.lines.front().c_str(), resolved ) ? std::string{ resolved } : probe.lines.front();
         }
     }
 
@@ -984,7 +996,7 @@ inline GitPathOffset deriveGitPathOffset( const IngestResult& ing, std::uint32_t
         const std::size_t  slash    = disk.rfind( '/' );
         const std::string  probeDir = ( slash == std::string::npos ) ? std::string{ "." } : ( slash == 0 ? std::string{ "/" } : disk.substr( 0, slash ) );
         char               resolvedDir[ PATH_MAX ];
-        if( !::realpath( probeDir.c_str(), resolvedDir ) )
+        if( !rwRealpath( probeDir.c_str(), resolvedDir ) )
         {
             continue; // this probe is unreadable — try the next file
         }
@@ -2911,7 +2923,7 @@ inline std::vector<CoPartner> cochangePartners( const std::string& root, const I
 inline bool hasEnclosingGitRepo( const std::string& root )
 {
     char resolved[ PATH_MAX ];
-    if( !::realpath( root.c_str(), resolved ) )
+    if( !rwRealpath( root.c_str(), resolved ) )
     {
         return false; // unresolvable root → treat as no repo (degrade)
     }

@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -271,7 +272,7 @@ namespace mcpedit
                 return;
             }
             char buf[ PATH_MAX ];
-            hint = ::realpath( pathHint.c_str(), buf ) != nullptr ? std::string( buf ) : pathHint;
+            hint = rwRealpath( pathHint.c_str(), buf ) != nullptr ? std::string( buf ) : pathHint;
             cwd  = ::getcwd( buf, sizeof( buf ) ) != nullptr ? std::string( buf ) : std::string();
         }
 

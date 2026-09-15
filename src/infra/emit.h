@@ -21,6 +21,7 @@
 // both arms and reaches neither.) fmt is NOT vendored: the standard library has the feature, so a vendored
 // copy would be a G3 regression.
 
+#include "posixcompat.h"   // rwMemstreamOpen/Close —— Windows 兼容层
 #include "Diagnostics.h"   // DEGRADED_PATH_ALERT — renderToString's open_memstream degrade, below
 
 #include <cstddef>
@@ -240,7 +241,7 @@ inline Rendered renderToString( Emit&& emit, const char* degradeMsg )
     Rendered    out;
     char*       buf = nullptr;
     std::size_t sz  = 0;
-    std::FILE*  m   = open_memstream( &buf, &sz );
+    std::FILE*  m   = rwMemstreamOpen( &buf, &sz );
     if( !m )
     {
         DEGRADED_PATH_ALERT( degradeMsg );
@@ -270,9 +271,8 @@ inline Rendered renderToString( Emit&& emit, const char* degradeMsg )
     // Order matters: fflush first (it reports the write error), then fclose UNCONDITIONALLY (it owns the
     // stream, and skipping it on a flush failure would leak it). A null buf after a clean close is itself a
     // failure — an emitter that wrote nothing still gets a zero-length, null-terminated buffer.
-    const bool flushed = std::fflush( m ) == 0;
-    const bool closed  = std::fclose( m ) == 0;
-    out.ok             = flushed && closed && buf != nullptr;
+    const bool closed  = rwMemstreamClose( m, &buf, &sz );
+    out.ok             = closed && buf != nullptr;
     if( out.ok )
     {
         // THE LAST ALLOCATION IS STILL AN ALLOCATION. This copy is the one throwing statement on the success

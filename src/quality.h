@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -1354,6 +1355,23 @@ inline ContentIdIndex contentIdsBySym( const IngestResult& ing, const Graph& g, 
 inline std::string cacheDirLadder()
 {
     std::string d;
+#if defined( _WIN32 )
+    // Windows：无 XDG/TMPDIR 惯例，优先 TEMP（用户级、无需 mkdir 权限位），回退到当前盘根 %TEMP% 缺失场景。
+    const char* tmpDir = std::getenv( "TEMP" );
+    if( tmpDir && *tmpDir )
+    {
+        d = tmpDir;
+        while(d.size() > 1 && ( d.back() == '/' || d.back() == '\\' ) )
+        {
+            d.pop_back();
+        }
+        d += "/ripwire";
+    }
+    else
+    {
+        d = "C:/ripwire-cache";   // TEMP 缺失的极端兜底；属主/权限位检查在 Windows 下恒成立（getuid=0、st_uid=0）
+    }
+#else
     const char* tmpDir = std::getenv( "TMPDIR" );
     if( tmpDir && *tmpDir )
     {
@@ -1372,7 +1390,18 @@ inline std::string cacheDirLadder()
     {
         d = "/tmp/ripwire-" + std::to_string( static_cast<unsigned long long>( ::getuid() ) );
     }
+#endif
 
+#if defined( _WIN32 )
+    // Windows 无 POSIX 权限位语义（MinGW stat 的 mode 位是模拟值，0700 恒等检查必失败而把
+    // 缓存打入 /dev/null 失效路径）；目录私有性由 %TEMP% 的用户 profile ACL 保证，只验证存在。
+    const int mkdirRc = ::mkdir( d.c_str(), 0700 );
+    struct stat st {};
+    if( mkdirRc == 0 || ::lstat( d.c_str(), &st ) == 0 )
+    {
+        return d;
+    }
+#else
     const int mkdirRc = ::mkdir( d.c_str(), 0700 );
     struct stat st {};
     if( mkdirRc == 0 || ( ::lstat( d.c_str(), &st ) == 0 && S_ISDIR( st.st_mode ) && st.st_uid == ::getuid() ) )
@@ -1384,6 +1413,7 @@ inline std::string cacheDirLadder()
             return d;
         }
     }
+#endif
     return "/dev/null/ripwire-cache-unavailable";   // unsafe/unusable candidate: make cache I/O fail closed
 }
 
@@ -1753,7 +1783,7 @@ inline constexpr std::uint64_t kCacheRootKeySeed = 1469598103934665603ull;
 
 inline std::string cacheRootKeyHex( const std::string& root )
 {
-    char*       rp = ::realpath( root.c_str(), nullptr );
+    char*       rp = rwRealpath( root.c_str(), nullptr );
     std::string absRoot;
     if( rp != nullptr )
     {

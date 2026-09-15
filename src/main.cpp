@@ -1,3 +1,4 @@
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 #include <string_view>       // %.*s (precision, pointer) collapses to one view
 
@@ -132,8 +133,9 @@ static_assert( rw::kTestGateCcxBarMirror == rw::quality::kCcxBar, "situ.h kTestG
 #include <chrono>             // VT-1 --run-trace: the wall clock behind duration_ms/timeout (steady_clock)
 #include <csignal>            // VT-1 --run-trace: SIGKILL for the timeout's process-group kill
 #include <fcntl.h>            // VT-1 --run-trace: /dev/null for the child's stdin
-#include <poll.h>             // VT-1 --run-trace: the capture loop's deadline wait
+#ifndef _WIN32
 #include <sys/wait.h>         // VT-1 --run-trace: waitpid — the command's exit status, honestly decoded
+#endif
 #include <tree_sitter/api.h>  // --doctor's grammar-probe check (ts_query_new against each grammar's tags.scm)
 #if defined( __APPLE__ )
 #include <mach-o/dyld.h>       // --doctor's self-exe-path check (_NSGetExecutablePath)
@@ -938,7 +940,7 @@ inline TokenBudgetBuffer openTokenBudgetBuffer( std::size_t tokenBudget, std::FI
 {
     TokenBudgetBuffer tb;
     if( tokenBudget == 0 ) { tb.out = real; return tb; }
-    tb.mem = open_memstream( &tb.buf, &tb.sz );
+    tb.mem = rwMemstreamOpen( &tb.buf, &tb.sz );
     if( !tb.mem )
     {
         DEGRADED_PATH_ALERT( "openTokenBudgetBuffer: open_memstream failed — falling back to direct stdout" );
@@ -957,7 +959,7 @@ inline TokenBudgetBuffer openTokenBudgetBuffer( std::size_t tokenBudget, std::FI
 inline std::optional<int> finishTokenBudgetGate( TokenBudgetBuffer& tb, std::FILE* real,
                                                  std::size_t mapEstTokens, std::size_t tokenBudget, bool asJson )
 {
-    if( tb.mem ) { std::fflush( tb.mem ); std::fclose( tb.mem ); }
+    if( tb.mem ) { rwMemstreamClose( tb.mem, &tb.buf, &tb.sz ); }
     if( tokenBudget > 0 && mapEstTokens > tokenBudget )
     {
         // §B7.8 — withheld_est_tokens=, not est_tokens=. `est_tokens` is normatively about what THIS RUN
@@ -1719,7 +1721,7 @@ int runDefaultMap( const MainDispatch& d )
             return 0;
         }
         serialize( m, ing, rank, g.outOff, g.outTargets, k, cfg.mostImportantLast, cfg.metrics, fanInPtr, &g.ambOut, cfg.stable, mapProvPtr, cboPtr, testedPtr, lcom4Ptr, ampPtr, &g.unresolvedOut, g.bindLabel.empty() ? nullptr : &g.bindLabel, mapAutoOrder, /*outEstTokens=*/nullptr, extraPayloadTokens, mapAnn, /*statsFirstScreen=*/false, mapRootArg, &g.locPinOut, g.externalCalls, &g.declinedOut );
-        std::fflush( m );  std::fclose( m );  std::free( buf );
+        rwMemstreamClose( m, &buf, &sz );  std::free( buf );
         return sz;
     };
 
@@ -1758,8 +1760,7 @@ int runDefaultMap( const MainDispatch& d )
         serializeJson( m, ing, rank, g.outOff, g.outTargets, k, cfg.mostImportantLast, cfg.metrics,
                        fanInPtr, &g.ambOut, cfg.stable, cboPtr, testedPtr, lcom4Ptr, ampPtr, &g.unresolvedOut,
                        g.bindLabel.empty() ? nullptr : &g.bindLabel, mapAutoOrder, /*outEstTokens=*/nullptr, mapProvPtr, mapAnn, mapRootArg, &g.locPinOut, g.externalCalls, &g.declinedOut );
-        std::fflush( m );
-        std::fclose( m );
+        rwMemstreamClose( m, &buf, &sz );
         std::free( buf );
         return sz;
     };

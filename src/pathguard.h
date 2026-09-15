@@ -166,6 +166,7 @@
 // round-3 read arms were observed RED against the round-2 binary before the read below existed, and whose
 // round-4 arms were observed RED against the round-3 binary and source.
 
+#include "infra/posixcompat.h"   // lstat/O_NOFOLLOW/getline —— Windows 兼容层
 #include "infra/emit.h"   // rw::emitTo — the refusal goes to stderr through THE emitter, not fprintf
 
 #include <fcntl.h>        // ::open + O_NOFOLLOW + O_NONBLOCK — the whole mechanism, in one syscall

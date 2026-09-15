@@ -33,10 +33,7 @@
 #include <cerrno>
 #include <chrono>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
+#include "infra/posixcompat.h"   // winsock 桥 + memstream/realpath —— Windows 兼容层
 #include <unistd.h>
 #include <sys/time.h>       // struct timeval — SO_RCVTIMEO (slow-loris guard)
 
@@ -520,10 +517,10 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
                               && !gitRepoToplevel( pinnedRoot ).empty();
 
     // ── 4) open the listening socket ───────────────────────────────────────────────────────────────────
-    const int listenFd = ::socket( AF_INET, SOCK_STREAM, 0 );
+    const int listenFd = rw_socket( AF_INET, SOCK_STREAM, 0 );
     if( listenFd < 0 ) { rw::emitTo( stderr, "ripwire: --listen: socket() failed: {}\n", std::strerror( errno ) ); return 1; }
     int one = 1;
-    ::setsockopt( listenFd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof( one ) );
+    rw_setsockopt( listenFd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof( one ) );
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -532,19 +529,19 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     if( ::inet_pton( AF_INET, bindHost.c_str(), &addr.sin_addr ) != 1 )
     {
         rw::emitTo( stderr, "ripwire: --listen: '{}' is not a valid IPv4 bind address (IPv6 is not supported; reverse-proxy for that)\n", host.c_str() );
-        ::close( listenFd );
+        ::closesocket( listenFd );
         return 1;
     }
     if( ::bind( listenFd, reinterpret_cast<sockaddr*>( &addr ), sizeof( addr ) ) != 0 )
     {
         rw::emitTo( stderr, "ripwire: --listen: bind {}:{} failed: {}\n", host.c_str(), port, std::strerror( errno ) );
-        ::close( listenFd );
+        ::closesocket( listenFd );
         return 1;
     }
     if( ::listen( listenFd, 16 ) != 0 )
     {
         rw::emitTo( stderr, "ripwire: --listen: listen() failed: {}\n", std::strerror( errno ) );
-        ::close( listenFd );
+        ::closesocket( listenFd );
         return 1;
     }
 
@@ -581,7 +578,7 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     // ── 6) accept loop: single-threaded, one request per connection (Connection: close) — §2b serialize ─
     for( ;; )
     {
-        const int fd = ::accept( listenFd, nullptr, nullptr );
+        const int fd = rw_accept( listenFd, nullptr, nullptr );
         if( fd < 0 )
         {
             if( errno == EINTR )
@@ -594,12 +591,12 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
         // slow-loris guard: a client that opens a connection and dribbles (or stalls) must not wedge the
         // single-threaded loop. SO_RCVTIMEO makes recv() return after kRecvTimeoutSec → readRequest drops it.
         timeval tv{ kRecvTimeoutSec, 0 };
-        ::setsockopt( fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof( tv ) );
-        ::setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof( one ) );
+        rw_setsockopt( fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof( tv ) );
+        rw_setsockopt( fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof( one ) );
 #ifdef SO_NOSIGPIPE
         // a client that drops mid-response costs only its own connection: a send() to a peer that is gone fails with EPIPE
         // instead of raising SIGPIPE (macOS's per-socket switch; sendAll passes MSG_NOSIGNAL where the platform has that).
-        ::setsockopt( fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof( one ) );
+        rw_setsockopt( fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof( one ) );
 #endif
 
         bool          tooManyHeaderBytes = false, tooLargeBody = false;
@@ -687,11 +684,11 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
             }
         }
 
-        ::close( fd );
+        ::closesocket( fd );
     }
 
     // unreachable (the accept loop runs until the process is signalled) — kept for symmetry / future signal handling.
-    ::close( listenFd );
+    ::closesocket( listenFd );
     return 0;
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "infra/posixcompat.h"
 #include "mcpedit.h"
 #include "nextverb.h"   // E4: nextFlag — the shell-safe spelling of the rollback message's one next:
 
@@ -68,7 +69,7 @@ inline std::string planDirAbs( const std::string& planPath )
     const std::size_t slash = planPath.find_last_of( '/' );
     const std::string dir   = slash == std::string::npos ? std::string( "." ) : planPath.substr( 0, slash );
     char              buf[ PATH_MAX ];
-    return ::realpath( dir.empty() ? "/" : dir.c_str(), buf ) != nullptr ? std::string( buf ) : std::string();
+    return rwRealpath( dir.empty() ? "/" : dir.c_str(), buf ) != nullptr ? std::string( buf ) : std::string();
 }
 
 // A5: a plan's `payload` names a file whose BYTES are spliced into a source file, so an unconfined payload
@@ -114,7 +115,7 @@ inline bool payloadWithinPlanDir( const std::string& planPath, const std::string
     // is comparable to it (a symlinked prefix such as /tmp -> /private/tmp otherwise reads as an escape),
     // and it is what catches a symlink sitting INSIDE the plan directory that points out of it.
     char buf[ PATH_MAX ];
-    if( ::realpath( lexical.c_str(), buf ) != nullptr )
+    if( rwRealpath( lexical.c_str(), buf ) != nullptr )
     {
         resolved = std::string( buf );
         return pathIsUnder( resolved, dir );

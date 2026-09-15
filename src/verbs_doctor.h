@@ -8,6 +8,7 @@
 // main.cpp's unnamed namespace (one TU, one unnamed namespace — everything here keeps the internal
 // linkage it had inside main.cpp, so the split adds zero API surface) and leans on main.cpp's own
 // top-of-file #includes and preamble helpers. The RIPWIRE_MAIN_TU guard turns a second includer into
+#include "infra/posixcompat.h"
 #include "gitstamp.h"          // isShallow — the git row's shallow="1" (2026-09-06 stranger audit)
 // a compile error instead of a silent per-TU-copy ODR trap.
 
@@ -64,7 +65,7 @@ inline std::string selfExecutablePath( const char* argv0 )
     if( _NSGetExecutablePath( buf, &size ) == 0 )
     {
         char resolved[ PATH_MAX ];
-        if( ::realpath( buf, resolved ) )
+        if( rwRealpath( buf, resolved ) )
         {
             return std::string( resolved );
         }
@@ -77,7 +78,7 @@ inline std::string selfExecutablePath( const char* argv0 )
     {
         buf[ byteCount ] = '\0';
         char resolved[ PATH_MAX ];
-        if( ::realpath( buf, resolved ) )
+        if( rwRealpath( buf, resolved ) )
         {
             return std::string( resolved );
         }
@@ -85,7 +86,7 @@ inline std::string selfExecutablePath( const char* argv0 )
     }
 #endif
     char resolved[ PATH_MAX ];
-    if( argv0 && ::realpath( argv0, resolved ) )
+    if( argv0 && rwRealpath( argv0, resolved ) )
     {
         return std::string( resolved );
     }
@@ -101,7 +102,7 @@ inline std::string selfExecutablePath( const char* argv0 )
             const std::size_t split = remaining.find( ':' );
             const std::string_view dir = remaining.substr( 0, split );
             const std::string candidate = std::string( dir.empty() ? "." : dir ) + "/" + argv0;
-            if( ::realpath( candidate.c_str(), resolved ) && ::access( resolved, X_OK ) == 0 )
+            if( rwRealpath( candidate.c_str(), resolved ) && ::access( resolved, X_OK ) == 0 )
             {
                 return std::string( resolved );
             }

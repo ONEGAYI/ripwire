@@ -1,4 +1,5 @@
 #pragma once
+#include "infra/posixcompat.h"
 #include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 
 #if !defined( RIPWIRE_INGEST_TU )
@@ -1243,7 +1244,7 @@ bool underGitRoot( const char* rootDir )
 {
     std::string dir = rootDir == nullptr ? std::string( "." ) : std::string( rootDir );
     char        resolved[ PATH_MAX ];
-    if( ::realpath( dir.c_str(), resolved ) != nullptr )
+    if( rwRealpath( dir.c_str(), resolved ) != nullptr )
     {
         dir = resolved;
     }

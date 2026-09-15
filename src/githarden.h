@@ -28,6 +28,7 @@
 // asserted (CONTRIBUTING §2) — so nothing is claimed for hooks. Revisit when a git version is shown to run one on
 // a read-only call. The `ext::` transport is already refused at the one place a URL reaches git (main.cpp's clone).
 
+#include "infra/posixcompat.h"   // Windows 兼容层
 #include "arch.h"            // rw::ciEqualAscii — the case-insensitive ASCII compare the tree already has (reused, not re-rolled)
 #include "docparse.h"        // docparse::detail::readWholeFile — the canonical whole-file byte read (reused, not re-rolled)
 #include "gitmine.h"         // rw::popenTrimmed — the one popen-and-trim shape in the tree (never a second)

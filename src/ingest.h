@@ -13,6 +13,7 @@
 // Single-threaded for v1 ("single-threaded is fine for v1"); tree-sitter parsers are
 // not thread-safe, so multithreading would need one parser per worker (deferred).
 
+#include "infra/posixcompat.h"
 #include "model.h"
 
 #include <atomic>       // AstQueryGroup::ellipsisCappedOut — a summed counter across the parallel file walk
@@ -324,7 +325,7 @@ inline std::string canonicalCrawlRoot( std::string_view rootDir )
 {
     const std::string dir( rootDir.empty() ? std::string_view( "." ) : rootDir );
     char              resolved[ PATH_MAX ];
-    return ::realpath( dir.c_str(), resolved ) != nullptr ? std::string( resolved ) : dir;
+    return rwRealpath( dir.c_str(), resolved ) != nullptr ? std::string( resolved ) : dir;
 }
 
 // Does `path` (as the walk spelled it) still live inside `rootReal` once every link on it is resolved?
@@ -332,7 +333,7 @@ inline std::string canonicalCrawlRoot( std::string_view rootDir )
 inline bool crawlPathStaysInRoot( const std::string& path, const std::string& rootReal ) noexcept
 {
     char resolved[ PATH_MAX ];
-    if( ::realpath( path.c_str(), resolved ) == nullptr )
+    if( rwRealpath( path.c_str(), resolved ) == nullptr )
     {
         return false;   // fail closed
     }

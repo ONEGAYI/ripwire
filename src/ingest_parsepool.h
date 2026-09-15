@@ -347,6 +347,11 @@ struct ParsePoolShared
 // one worker's whole life: grab files off the shared cursor, reuse cache hits, parse+capture misses,
 // queueing parsed trees while the tags queries still compile. Body moved verbatim from the lambda in
 // ingest() (accumulators renamed tDefs[t]→out.defs etc., shared state reached through `sh`).
+// Windows/MinGW: GCC 的 win32 线程入口栈存在 8 字节错位（gthr-win32），深处函数序言的
+// 对齐假设（vmovdqa 等）随之崩；入口强制重对齐恢复整条调用链的 ABI 假设。
+#if defined( _WIN32 ) && defined( __GNUC__ )
+__attribute__( ( force_align_arg_pointer ) )
+#endif
 inline void runParseWorker( ParsePoolShared& sh, unsigned t )
 {
     IngestFileScan& scan = sh.scan;
@@ -894,3 +899,4 @@ inline RawFacts runParsePool( IngestResult& result, const char* rootDir, std::st
 }   // namespace
 
 }   // namespace rw
+
