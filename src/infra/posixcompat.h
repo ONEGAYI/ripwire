@@ -15,6 +15,12 @@
 
 #if defined( __GLIBC__ )
 
+// mcpserver.h 的 socket 头唯一入口在本兼容层（Windows 走 winsock 桥，这里还原 POSIX 面）
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+
 inline std::FILE* rwMemstreamOpen( char** buf, std::size_t* sz )
 {
     return open_memstream( buf, sz );
