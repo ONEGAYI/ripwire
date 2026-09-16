@@ -15,6 +15,38 @@ not published here — see `docs/EVALS.md` for the instruments behind the headli
 
 ## [Unreleased]
 
+## [0.6.1-windows.1] — 2026-09-16
+
+**基于上游 v0.6.1 的第一个 fork 版本：补齐 Windows 原生构建，并首次附带双平台预编译二进制。**
+Linux 侧与上游行为经字节级对比一致——全部兼容代码由 `__GLIBC__` 分支转发隔离。
+
+### 新功能
+
+- **Windows 原生构建**：新增 `src/infra/posixcompat.h` 兼容层（memstream 的 tmpfile 读回替身、
+  `_fullpath` 版 realpath、`ReadFile+OVERLAPPED` 版 pread、`LockFileEx` 版 flock、winsock 桥、
+  setenv/mkdir/localtime_r/fcntl 映射），以 VS Clang 19 + MinGW-w64 头库的混合工具链产出
+  **全静态 Windows exe**（仅依赖系统 DLL）。`--run-trace` 执行体重写为 CreateProcess 版。
+- **Windows 运行时适配**：缓存目录走 `%TEMP%\ripwire`；缓存的 tmp→final 原子替换加 Windows
+  降级链（MoveFileEx → remove+rename → CopyFile，checksum trailer 自愈兜底）；popen 命令的
+  `2>/dev/null` 在 cmd.exe 下自动替换为 `2>NUL`。
+
+### Bug 修复
+
+- 修复兼容层自身破坏 Linux 构建的三处遗漏（Windows shim 未包条件编译、socket 头缺位、
+  `poll.h` 误删）——fork 版与上游版在 Linux 同仓同查询输出**字节级一致**。
+
+### 文档
+
+- 新增 `docs/windows-build.md`：工具链选型论证、完整重建命令、补丁清单、已知弱化验收口径
+  与 14 条症状→根因→解法的踩坑速查表；`AGENTS.md` 增补 Windows 构建小节与指针。
+
+### 已知弱化（实验性发布）
+
+符号链接防护（lstat/O_NOFOLLOW）弱化为普通文件语义；`--run-trace` 的 shell 为 `cmd.exe /c`、
+超时仅杀直系进程；git 探测在路径含空格的仓库可能降级。详见 `docs/windows-build.md`。
+
+[0.6.1-windows.1]: https://github.com/ONEGAYI/ripwire/commits/v0.6.1-windows.1
+
 ## [0.6.1] — 2026-09-14
 
 **A header selector answers only with the definitions it can tie to that header, every number a compact answer prints
