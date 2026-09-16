@@ -21,6 +21,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <poll.h>
 
 // socket 桥的 POSIX 转发：mcpserver.h 的调用点统一走 rw_ 前缀与 closesocket 拼写，
 // 与 MinGW 分支的 winsock 桥对称（fd 即 int，失败即 -1，两侧语义一致）。
