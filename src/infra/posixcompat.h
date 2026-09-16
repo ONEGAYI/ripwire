@@ -252,7 +252,8 @@ inline char* rwRealpath( const char* path, char* resolved )
 
 #endif
 
-// ── 第四批杂项 ──
+#if !defined( __GLIBC__ )
+// ── 第四批杂项（与上面的分支同为非 glibc 专属；追加时落在 #endif 之外曾破坏 Linux 构建）──
 // setenv → _putenv_s（overwrite=0 时先查在值）
 inline int setenv( const char* name, const char* value, int overwrite )
 {
@@ -275,6 +276,7 @@ inline int fsync( int fd ) { return _commit( fd ); }
 #define F_SETFL 4
 #endif
 inline int fcntl( int, int, ... ) { return 0; }
+#endif  // !__GLIBC__
 
 // rename 的原子覆盖替身：POSIX rename 语义是目标存在则原子替换，Windows CRT 的 rename
 // 在目标存在时失败（缓存/快照的 tmp→final 替换因此每写必败）。
