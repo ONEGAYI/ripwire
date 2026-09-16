@@ -20,6 +20,17 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+
+// socket 桥的 POSIX 转发：mcpserver.h 的调用点统一走 rw_ 前缀与 closesocket 拼写，
+// 与 MinGW 分支的 winsock 桥对称（fd 即 int，失败即 -1，两侧语义一致）。
+inline int rw_socket( int af, int type, int proto ) { return ::socket( af, type, proto ); }
+inline int rw_accept( int fd, sockaddr* addr, socklen_t* len ) { return ::accept( fd, addr, len ); }
+inline int rw_setsockopt( int fd, int level, int optname, const void* optval, socklen_t optlen )
+{
+    return ::setsockopt( fd, level, optname, optval, optlen );
+}
+inline int closesocket( int fd ) { return ::close( fd ); }
 
 inline std::FILE* rwMemstreamOpen( char** buf, std::size_t* sz )
 {
