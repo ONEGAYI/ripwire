@@ -526,7 +526,7 @@ template<class OnLine, class KeepWalking>
 inline PatchWalk walkGitPatch( const std::string& cmd, OnLine onLine, KeepWalking keepWalking )
 {
     PatchWalk  walk;
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return walk;                                          // the CALLER names the degrade — it knows what it lost

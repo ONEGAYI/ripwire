@@ -392,7 +392,7 @@ inline std::string gitBlameLineSha( const std::string& repoRoot, const std::stri
     const std::string cmd = "git -c core.quotepath=false" + quality::gitBlameConfigPins( repoRoot )
                            + " -C " + shSingleQuote( repoRoot ) + " blame --porcelain -L "
                            + std::to_string( lineNo1 ) + ",+1 HEAD -- " + shSingleQuote( relPath ) + " 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return {};

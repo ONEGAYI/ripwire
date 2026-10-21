@@ -1676,7 +1676,15 @@ inline std::string gitWindowRefSha( const std::string& root, std::uint32_t days 
         return preWindow;
     }
 
+#if defined( _WIN32 )
+    // cmd.exe 无 tail：rev-list HEAD 由新到旧输出，gitOneLine（popenTrimmed 形状）以 '\n' 回接多行，
+    // 取最后一个换行之后的内容即 tail -1 选出的同一行（仓库比窗口还新 → 其首个提交）。
+    const std::string all = gitOneLine( root, "rev-list HEAD 2>/dev/null" );
+    const std::size_t lastNl = all.rfind( '\n' );
+    return lastNl == std::string::npos ? all : all.substr( lastNl + 1 );
+#else
     return gitOneLine( root, "rev-list HEAD 2>/dev/null | tail -1" );   // repo younger than the window → its first commit
+#endif
 }
 
 // Does `root` sit in a git repo that HAS at least one commit? A WINDOWLESS probe (no --since), so it is true
@@ -1686,7 +1694,7 @@ inline bool gitRepoHasHistory( const std::string& root )
 {
     const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root )
                           + " rev-parse --verify --quiet HEAD 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return false;
@@ -4240,7 +4248,7 @@ inline void gitBlameRangeWindowCommits( const std::string& root, const std::stri
     const std::string cmd = "git -c core.quotepath=false" + gitBlameConfigPins( root ) + " -C " + shSingleQuote( root )
                           + " blame --porcelain -L " + std::to_string( startLine ) + ",+" + std::to_string( lineCount )
                           + " HEAD -- " + shSingleQuote( relPath ) + " 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return;
@@ -4313,7 +4321,7 @@ inline std::vector<DiffHunk> gitDiffHunksVsHead( const std::string& root, const 
     std::vector<DiffHunk> hunks;
     const std::string cmd = "git -c core.quotepath=false -c diff.algorithm=myers -C " + shSingleQuote( root )
                           + " diff --no-ext-diff --unified=0 --no-color HEAD -- " + shSingleQuote( relPath ) + " 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe ) { DEGRADED_PATH_ALERT( "quality: churn hunk diff could not be spawned" ); return hunks; }
 
     char buf[ 4096 ];

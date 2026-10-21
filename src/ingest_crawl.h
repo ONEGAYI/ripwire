@@ -1273,7 +1273,7 @@ GitIgnoreSet collectGitIgnored( const char* rootDir )
     }
     const std::string cmd = "git -C " + shSingleQuote( rootDir == nullptr ? std::string( "." ) : std::string( rootDir ) )
                           + " -c core.quotepath=false ls-files --others --ignored --exclude-standard --directory -z 2>/dev/null";
-    std::FILE* pipe = ::popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( pipe == nullptr )
     {
         DEGRADED_PATH_ALERT( "ingest: cannot run git for the ignore probe — full walk" );
@@ -1500,7 +1500,9 @@ CrawlResult collectSources( const char* rootDir, const std::vector<std::string>&
             {
                 if( full.empty() )
                 {
-                    full = p.string();
+                    // generic_string：分隔符一律 '/'。Windows 的原生 string() 产 '\'，而全管线
+                    // （git 输出、join 比对、p= 输出）说 '/'；POSIX 下两者字节相同，零变化。
+                    full = p.generic_string();
                 }
                 return full;
             };

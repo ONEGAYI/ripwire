@@ -61,7 +61,26 @@ cmake --build build-clang -j 14
 - `ingest_cache.h`：tmp→final 替换改用 `rwRenameReplace`——Windows 禁止 rename 到
   「被本进程读句柄持有」的文件（POSIX 允许），降级链 remove+rename → CopyFile 覆写
   （非原子，缓存 checksum trailer 自愈兜底）。
-- `gitmine.h` 的 `popenTrimmed`：`2>/dev/null` → `2>NUL`（cmd.exe 不认 POSIX null 设备）。
+- `infra/jsonesc.h`：**宿主 shell 适配层**（原 `popenTrimmed` 私有补丁的推广）：
+  - `rw::popenForHost(cmd, mode)` —— 全部 17 处 popen 站点（popenTrimmed/gitCommandLines/
+    git 历史走读/crossref cat-file/gitoracle 补丁走读/docparse markitdown/ingest 忽略探测/
+    clone/prcontext/planlint/quality 探针）的统一入口；Windows 分支把 `2>/dev/null`、
+    `>/dev/null`、`</dev/null` 重定向逐个替换为 `NUL`（cmd.exe 打不开 `\dev\null`，会打印
+    "The system cannot find the path specified." **并中止整条命令**——旧版只补了 popenTrimmed
+    一处，其余裸 popen 站点每次探测一行噪音且 git 输出整体丢失）。POSIX 分支原样转发。
+  - `shSingleQuote` 的 `_WIN32` 分支 —— cmd 引号转义层：双引号包裹（cmd 视引号内
+    `& | < > ^` 空格为字面量，子进程 CRT 剥引号；单引号两层都不剥，git 会收到字面引号路径）。
+  - 残留弱点：cmd 在双引号内仍展开 `%VAR%`（命令行模式下未定义变量保持字面量）；
+    路径/refs/日期不含 `%`，不设防。
+- `gitmine.h`/`quality.h`：两处 `| tail -1` 在 `_WIN32` 下改为省略管道、读端取末行
+  （cmd.exe 无 tail）；`githarden.h` 的 fsmonitor 探测依赖 POSIX `printf`+`$?` 复合命令，
+  Windows 下诚实降级为 Unset。
+- `infra/posixcompat.h` 的 `rwRealpath`：`_fullpath` 输出归一化为 `/` 分隔符——反斜杠
+  形式的绝对路径上浮到 gitmine 的 GitPathOffset 尾部匹配（全管线正斜杠拼写）时永远失败，
+  churn 整体降级为 "no churn evidence"。Win32/CRT 文件 API 两形皆收，归一化无副作用。
+- `ingest_crawl.h` 的目录走读：`p.string()` → `p.generic_string()`——Windows 原生拼写
+  产 `.\src\x.h`，与 git 输出 `src/x.h` 的 join 精确匹配失败（POSIX 下两写法字节相同，
+  零变化；单文件根分支沿用用户拼写，不变）。
 - `verbs_change.h`：`--run-trace` 执行体加 `#ifdef _WIN32` 的 CreateProcess 实现。
 - `main.cpp`/`mcpserver.h`：`sys/wait.h`、`sys/socket.h` 等 POSIX 头的处理与 socket 调用替换。
 
@@ -71,9 +90,10 @@ cmake --build build-clang -j 14
    弱化为「视为普通文件」。NTFS 符号链接场景的安全检查不生效。
 2. **`--run-trace` 超时杀进程只杀直系进程**（POSIX 版杀整个进程组）；命令按 `cmd.exe /c`
    解释（POSIX 版是 `sh -c`），shell 方言不同。
-3. **git 探测走 cmd.exe**：`shSingleQuote` 的单引号转义在 cmd 下语义不同——
-   路径含空格的仓库 git 探测（churn 等）可能失败并降级（地图/查询不受影响，只是缺 churn 注记）。
-   stderr 可能残留个别 cmd 噪音行。
+3. **git 探测的 cmd.exe 方言**（大部分已修复，见补丁清单的宿主 shell 适配层）：双引号层落地后
+   `git -C <含空格路径>` 的探测正常。残留：① 双引号内 `%VAR%` 仍被 cmd 展开（见上）；② 依赖
+   POSIX 复合命令的探测（fsmonitor 的 `printf`+`$?`）降级为无配置，不冒充；③
+   `quality.h` 的 `git archive | tar -x` 管道依赖 PATH 上的 tar（Win10 1803+ 自带 bsdtar）。
 4. **缓存覆写的极端窗口非原子**（见上，checksum 自愈）。
 5. **未经上游回归套件验证**（612 个 gate 脚本为 POSIX shell 系）。冒烟验证范围：
    `--version`、默认 map、`--for` 排名（与 WSL 版字节级对比一致）、缓存冷/暖、
@@ -92,7 +112,9 @@ cmake --build build-clang -j 14
 | 变量名 `near`/`far`/`interface` 编译报 `expected unqualified-id before '='` | windows.h 的 16 位时代段限定符宏（`#define near`，无守卫） | posixcompat.h 在 `#include <windows.h>` 后 `#undef near/far/interface` |
 | `open_memstream` 替身的输出永远为空 | `FILE*` 的 `fclose` 无法挂钩，tmpfile 数据在调用方读 buf 前已丢 | 放弃透明替换：调用方 `fflush+fclose` 改为显式 `rwMemstreamClose(m,&buf,&sz)` 配对（20 处）；大小用 `fseek(END)+ftell`，与 glibc「最大写入偏移」语义一致 |
 | 缓存每次报 `cannot write` / `cannot replace` | ① 缓存目录探测走 `/tmp` 字面路径；② MinGW `stat` 的权限位是模拟值，`0700` 恒等检查必失败；③ Windows 禁止 rename 到被本进程读句柄持有的文件（POSIX 允许） | ① `%TEMP%\ripwire` 分支；② Windows 跳过权限位检查（ACL 保证私有）；③ `MoveFileEx(REPLACE)` + 降级链 remove+rename → `CopyFile` 覆写（checksum trailer 自愈） |
-| 每条 git 探测打印 `The system cannot find the path specified.` | cmd.exe 不认 POSIX 的 `/dev/null` 重定向 | `popenTrimmed` 入口把 `2>/dev/null` 替换为 `2>NUL` |
+| 每条 git 探测打印 `The system cannot find the path specified.` | cmd.exe 打不开 `\dev\null`：打印该行**并中止整条命令**。旧版只在 `popenTrimmed` 一处做了 `2>/dev/null → 2>NUL`，其余 16 处裸 popen 站点（gitCommandLines、历史走读、cat-file、markitdown、忽略探测等）漏网——每次探测一行噪音，且该次 git 输出整体丢失（非仅噪音） | `rw::popenForHost`（infra/jsonesc.h）统一替换所有 null-设备重定向；新增 popen 站点一律走它，不再裸调 |
+| `git -C <路径>` 类探测在路径含空格时行为异常，或 git 层整体无输出（churn 全缺） | `shSingleQuote` 产出 POSIX 单引号转义；cmd.exe 与子进程 CRT 都不剥单引号，git 收到字面 `'路径'`，`-C` 即 `cannot change to` 失败（且单引号内 `& | < > ^` 对 cmd 仍是元字符） | `shSingleQuote` 的 `_WIN32` 分支：双引号包裹 + `\"` 转义（即本表旧版所注「深度修复需 cmd 引号转义层」的落地） |
+| 探测正常但 churn/co-change 全缺，`window="… (no churn evidence)"`，`--rank-by=churn` 退化为 pagerank | join 两端拼写不一致：`_fullpath`（rwRealpath）产 `\`、`std::filesystem::path::string()`（走读）产 `.\x\y`，而 git 输出与全管线比对说 `/` 的 `x/y`——GitPathOffset 的精确尾部匹配永远失败 | `rwRealpath` 归一化 `/`（posixcompat.h）+ 走读改 `generic_string()`（ingest_crawl.h）；POSIX 字节不变 |
 | 大文件解析段错误但参数全部合法 | PE 默认栈 2MB，Linux 默认 8MB（此条修复的是真实风险，虽然主崩溃另有其因） | 链接 `-Wl,--stack,16777216` |
 | `realpath`/`getline`/`setenv`/`flock`/`pread`/`fcntl` 等编译报未声明 | MinGW-Builds 的 CRT 比 MSYS2 精简（连 `realpath` 都没有） | 全部在 posixcompat.h 提供（见补丁清单）；`pread` 用 `ReadFile+OVERLAPPED`（真定位读），`flock` 用 `LockFileEx` 全文件范围 |
 | 后台构建中途无声死亡、产物残缺 | 构建命令管道接了 `head -40`：head 读满即关管道，make 收 SIGPIPE 自杀 | **长构建输出重定向到文件**（`cmd > log 2>&1`）再 grep/分段看；同理避免 `tail -N` 截掉编译错误详情 |

@@ -310,6 +310,25 @@ inline bool isJsonWs( char c ) noexcept
 // forwards here instead of carrying its own copy.
 inline std::string shSingleQuote( const std::string& s )
 {
+#if defined( _WIN32 )
+    // Windows 原生构建的 cmd 引号转义层（windows-build.md 速查表末行的「深度修复」）。
+    // 命令串经 _popen → cmd.exe /c → 子进程 CRT 三层解释：cmd 与 MSVC CRT 都不剥 POSIX
+    // 单引号（git 会收到带引号的字面路径，`-C` 即败），且单引号内的 & | < > ^ 对 cmd
+    // 仍是元字符。改用双引号包裹：cmd 视引号内为字面量（空格、&、^、| 均安全），子进程
+    // CRT 剥掉双引号本身；内嵌 " 以 \" 转义（CRT 规则）。已声明的残留弱点：cmd 在引号内
+    // 仍展开 %VAR%（命令行模式下未定义变量保持字面量）——路径/refs/日期不含 %，不设防。
+    std::string out = "\"";
+    for( char c : s )
+    {
+        if( c == '"' ) { out += "\\\""; }
+        else
+        {
+            out += c;
+        }
+    }
+    out += "\"";
+    return out;
+#else
     std::string out = "'";
     for( char c : s )
     {
@@ -321,6 +340,40 @@ inline std::string shSingleQuote( const std::string& s )
     }
     out += "'";
     return out;
+#endif
+}
+
+// ── popenForHost — THE one host-shell-adapted popen entry ─────────────────────────────────────────
+//
+// Every popen call site in the tool (gitmine's popenTrimmed/gitCommandLines/history walks, crossref's
+// cat-file batch, gitoracle's patch walk, docparse's markitdown bridge, ingest_crawl's ignore probe,
+// main.cpp's clone, prcontext/planlint/quality's per-file probes — 17 sites as of this writing) reaches
+// popen through HERE and nowhere else. Homed beside shSingleQuote for the same reason it cites: jsonesc.h
+// is the lightest header every popen caller already includes (docparse.h is deliberately STL-only and must
+// not pull the windows.h-weighted posixcompat.h). The POSIX branch is a plain passthrough — byte-identical
+// commands, zero behavior change. The _WIN32 branch rewrites the POSIX null-device redirects: cmd.exe
+// cannot open \dev\null, prints "The system cannot find the path specified." AND ABORTS the whole command
+// (the probe then silently degrades on top of the noise), so 2>/dev/null → 2>NUL etc. before spawning.
+inline std::FILE* popenForHost( const std::string& cmd, const char* mode )
+{
+#if defined( _WIN32 )
+    std::string adapted;
+    adapted.reserve( cmd.size() );
+    std::size_t pos = 0;
+    while( pos < cmd.size() )
+    {
+        const std::string_view tail = std::string_view( cmd ).substr( pos );
+        // Longest-first so "2>/dev/null" is not half-eaten by the bare ">/dev/null" rule.
+        if( tail.starts_with( "2>/dev/null" ) )      { adapted += "2>NUL";  pos += 11; }
+        else if( tail.starts_with( "1>/dev/null" ) ) { adapted += "1>NUL";  pos += 11; }
+        else if( tail.starts_with( ">/dev/null" ) )  { adapted += ">NUL";   pos += 10; }
+        else if( tail.starts_with( "</dev/null" ) )  { adapted += "<NUL";   pos += 10; }
+        else                                         { adapted += cmd[ pos++ ]; }
+    }
+    return ::popen( adapted.c_str(), mode );
+#else
+    return ::popen( cmd.c_str(), mode );
+#endif
 }
 
 }   // namespace rw

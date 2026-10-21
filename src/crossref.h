@@ -494,7 +494,7 @@ inline void streamBlobs( const std::string& root, const std::vector<std::string>
 
     const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root )
                           + " cat-file --batch < " + shSingleQuote( listPath ) + " 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         ::unlink( listPath.c_str() );
