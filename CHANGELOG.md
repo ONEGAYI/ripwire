@@ -15,6 +15,48 @@ not published here — see `docs/EVALS.md` for the instruments behind the headli
 
 ## [Unreleased]
 
+## [0.6.1-windows.2] — 2026-10-21
+
+**修复 Windows 构建 git 数据层的整体失效：消除每次探测的 cmd.exe 噪音行，churn / co-change /
+gitstamp 注记自此可用。** 三层叠加根因一并修复；全部改动 `_WIN32` 门控，POSIX 路径字节不变
+（popenTrimmed 的既有替换循环收敛进统一入口，行为等价）。
+
+### Bug 修复
+
+**git 子进程的 cmd.exe 方言适配（三层根因）**
+
+- 每次 git 探测打印 `The system cannot find the path specified.` 并**中止整条命令**：16 处绕过
+  `popenTrimmed` 的裸 popen 站点仍带 `2>/dev/null`，cmd.exe 打不开 `\dev\null` 即报错放弃，该次
+  git 输出整体丢失（非仅噪音）。新增 `rw::popenForHost` 统一入口（`infra/jsonesc.h`），全部
+  17 处 popen 站点改走它，Windows 分支把 null 设备重定向逐个替换为 `NUL`
+- `git -C <路径>` 全线失败（churn/gitstamp 等注记整体缺失，不止路径含空格场景）：
+  `shSingleQuote` 的 POSIX 单引号 cmd.exe 与子进程 CRT 都不剥，git 收到字面 `'路径'` 即
+  `cannot change to` 失败。`_WIN32` 分支改为双引号包裹 + `\"` 转义（0.6.1-windows.1 所记
+  「深度修复需 cmd 引号转义层」的落地）
+- 探测成功后 join 仍失败（`window="… (no churn evidence)"`，`--rank-by=churn` 静默退化为
+  uniform 排序）：`_fullpath` 与 `std::filesystem` 走读在 Windows 产 `\` 分隔符（`.\src\x.h`），
+  与 git 输出 / 全管线的 `src/x.h` 精确字符串匹配永败。`rwRealpath` 归一化 `/`、目录走读改
+  `generic_string()`
+
+**其他 Windows 方言修复**
+
+- 两处 `git … | tail -1`（cmd.exe 无 tail）在 `_WIN32` 下改为省略管道、读端取末行
+- fsmonitor 探测依赖 POSIX `printf`+`$?` 复合命令，Windows 下诚实降级为 unset（不冒充）
+
+### 文档
+
+- `docs/windows-build.md` 补丁清单与踩坑速查表同步：重定向/引号两条速查行更新为根因+统一解法，
+  新增「探测正常但 churn 全缺」症状行（分隔符 join 不匹配）
+
+### 已知弱化（实验性发布）
+
+双引号内 `%VAR%` 仍被 cmd 展开（命令行模式下未定义变量保持字面量；路径/refs/日期不含 `%`，
+不设防）；fsmonitor 探测在 Windows 恒报 unset；`git archive | tar -x` 管道依赖 PATH 上的 tar
+（Win10 1803+ 自带 bsdtar）。上游 612 个 POSIX gate 脚本仍未在本仓验证（Windows 不可执行），
+替代验证口径见 `docs/windows-build.md`。详见 `docs/windows-build.md`。
+
+[0.6.1-windows.2]: https://github.com/ONEGAYI/ripwire/compare/v0.6.1-windows.1...v0.6.1-windows.2
+
 ## [0.6.1-windows.1] — 2026-09-16
 
 **基于上游 v0.6.1 的第一个 fork 版本：补齐 Windows 原生构建，并首次附带双平台预编译二进制。**
