@@ -89,6 +89,13 @@ inline FsmonitorForm classifyFsmonitorValue( std::string_view value ) noexcept
 // (rc 0, empty). Any failure to run git at all reads as Unset: nothing to neutralise, nothing to claim.
 inline FsmonitorForm probeFsmonitorForm( const std::string& root )
 {
+#if defined( _WIN32 )
+    // Windows 原生构建降级：该探测的退出码带内回传依赖 POSIX shell 的 `; printf ... "$?"` 复合
+    // 命令，cmd.exe 既无 printf 也无 $?（%errorlevel% 在单行内按解析期展开，读到的是旧值）。
+    // fsmonitor 是「加固」检查而非答案来源，按无配置（Unset）诚实降级，不冒充、不引噪音。
+    (void) root;
+    return FsmonitorForm::Unset;
+#else
     const std::string out  = popenTrimmed( "git -C " + shSingleQuote( root ) + " config --get core.fsmonitor 2>/dev/null; printf '\\nrc=%s' \"$?\"" );
     const std::size_t rcAt = out.rfind( "rc=" );
     if( rcAt == std::string::npos )
@@ -105,6 +112,7 @@ inline FsmonitorForm probeFsmonitorForm( const std::string& root )
         value.remove_suffix( 1 );
     }
     return classifyFsmonitorValue( value );
+#endif
 }
 
 // ── the cheap tier: could a LOCAL config file even carry the key? ────────────────────────────────────────────

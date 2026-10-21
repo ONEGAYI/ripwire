@@ -219,20 +219,11 @@ inline std::string sinceUnresolvedRefusal( std::string_view value )
 // the G3 byte-safe line reader every git pipe in this header uses: no fixed buffer to split a long path on
 // (churnjoincheck's G3 arm forbids fgets here), a high byte never sign-changed. Lines are re-joined with the
 // '\n' the reader consumed, so multi-line callers (crossref.h, the rename map) read exactly what fgets gave them.
-inline std::string popenTrimmed( const std::string& cmdIn )
+inline std::string popenTrimmed( const std::string& cmd )
 {
-#if defined( _WIN32 )
-    // cmd.exe 不认 POSIX 的 /dev/null：静默重定向逐个替换为 NUL，消除每次 git 探测的
-    // "The system cannot find the path specified" stderr 噪音（探测本身走同样的降级路径）。
-    std::string cmd = cmdIn;
-    for( std::size_t pos = 0; ( pos = cmd.find( "2>/dev/null", pos ) ) != std::string::npos; pos += 5 )
-    {
-        cmd.replace( pos, 11, "2>NUL" );
-    }
-#else
-    const std::string& cmd = cmdIn;
-#endif
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    // Windows 的 null-设备重定向适配（2>/dev/null → 2>NUL）住在 popenForHost（infra/jsonesc.h）里，
+    // 与每个裸 popen 站点共享同一份——不再在此私藏第二份替换循环。
+    std::FILE* pipe = popenForHost( cmd, "r" );
     if( !pipe )
     {
         return {};
@@ -653,7 +644,7 @@ struct GitCommandLines
 inline GitCommandLines gitCommandLines( const std::string& cmd )
 {
     GitCommandLines out;
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return out;
@@ -1457,7 +1448,7 @@ inline std::vector<std::vector<std::uint32_t>> gitLogFileSets( const std::string
     const GitPathIndex byGitPath = gitPathIndexOfFiles( ing, onlyRoot );
 
     const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root ) + " log " + kMergeDiffArgs + windowArgs + "--name-only --format=tformat:__C__ 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return sets;
@@ -1548,7 +1539,7 @@ inline RawCommitStream gitLogNameOnlyRaw( const std::string& root, const std::st
     const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root )
                           + " log " + kMergeDiffArgs + "--since=" + shSingleQuote( defaultWindowSince( root, coSince ) )   // F1: HEAD-anchored when `coSince` is a default month window
                           + " --name-only --format=tformat:__C__%x20%ct 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return out;
@@ -1595,9 +1586,14 @@ inline std::string gitWindowBoundarySha( const std::string& root, const std::str
     PROFILE_SCOPE_DESCRIBE( "gitmine: gitWindowBoundarySha (cheap window-drift probe)" );
     // G3: the shared reader, not a private `char buf[128]` + fgets accumulate. `| tail -1` already reduces
     // the output to one line, so `.back()` is that line; gitCommandLines has already stripped its CR/LF tail.
-    const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root )
-                          + " log --since=" + shSingleQuote( defaultWindowSince( root, coSince ) )   // F1: the probe must resolve the window it guards, by the same rule
-                          + " --format=%H 2>/dev/null | tail -1";
+    std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root )
+                    + " log --since=" + shSingleQuote( defaultWindowSince( root, coSince ) )   // F1: the probe must resolve the window it guards, by the same rule
+                    + " --format=%H 2>/dev/null";
+#if !defined( _WIN32 )
+    cmd += " | tail -1";
+#else
+    // cmd.exe 无 tail：git log 由新到旧输出，读端取末行（下方 lines.back()）即 tail -1 的同一行。
+#endif
     const GitCommandLines res = gitCommandLines( cmd );
     if( !res.isStarted || res.lines.empty() )
     {
@@ -1762,7 +1758,7 @@ inline std::vector<std::uint32_t> gitFileCommitCountsInDayWindow( const std::str
     // A commit counts once per file it touches, iff its epoch is within [cutoff, headEpoch].
     const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root )
                           + " log " + kMergeDiffArgs + "--name-only --format=tformat:__C__%x20%ct 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return counts;
@@ -1991,7 +1987,7 @@ inline DecayedChurnMined gitLogDecayedFileMining( const std::string& root, const
 
     const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root ) + " log " + kMergeDiffArgs + windowArgs
                           + "--name-only --format=tformat:__C__%x20%ct 2>/dev/null";
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return m;
@@ -2356,7 +2352,7 @@ inline std::vector<FileOwnership> gitFileAuthors(
     }
     cmd += " 2>/dev/null";
 
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return {};

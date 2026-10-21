@@ -544,7 +544,7 @@ inline std::string shellQuote( const std::string& s )
 inline std::string runMarkitdown( const std::string& path )
 {
     const std::string cmd = "markitdown " + detail::shellQuote( path ) + " 2>/dev/null";
-    std::FILE* pipe = ::popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( pipe == nullptr )
     {
         DEGRADED_PATH_ALERT( "docparse: popen failed for markitdown bridge" );

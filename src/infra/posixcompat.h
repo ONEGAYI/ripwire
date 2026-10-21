@@ -257,15 +257,30 @@ inline bool rwMemstreamClose( std::FILE* m, char** buf, std::size_t* sz )
 
 inline char* rwRealpath( const char* path, char* resolved )
 {
+    // _fullpath 产出的分隔符是 '\'，而全管线（爬取路径、git 输出、join 比对）一律说 '/'：
+    // 反斜杠形式的绝对路径若原样上浮，gitmine 的 GitPathOffset 尾部匹配（正斜杠拼写）永远
+    // 失败，churn 整体降级为 "no churn evidence"。归一化为 '/'：Win32/CRT 的文件 API 两形
+    // 皆收，唯一受影响的是「拿来比对」的调用方——它们要的正是 '/'。
+    char* r = nullptr;
     if( resolved == nullptr )
     {
         char* heap = static_cast<char*>( std::malloc( PATH_MAX ) );
         if( heap == nullptr ) { return nullptr; }
-        char* r = _fullpath( heap, path, PATH_MAX );
+        r = _fullpath( heap, path, PATH_MAX );
         if( r == nullptr ) { std::free( heap ); }
-        return r;
     }
-    return _fullpath( resolved, path, PATH_MAX );
+    else
+    {
+        r = _fullpath( resolved, path, PATH_MAX );
+    }
+    if( r != nullptr )
+    {
+        for( char* p = r; *p != '\0'; ++p )
+        {
+            if( *p == '\\' ) { *p = '/'; }
+        }
+    }
+    return r;
 }
 
 #endif

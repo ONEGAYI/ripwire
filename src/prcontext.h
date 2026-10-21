@@ -220,7 +220,7 @@ inline NumstatDiff numstatChangedPaths( const std::string& root, const std::stri
     const std::string cmd = "git -c core.quotepath=false -C " + shSingleQuote( root ) + " diff --numstat "
                           + revArgs + " -- 2>/dev/null";
 
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         return out;

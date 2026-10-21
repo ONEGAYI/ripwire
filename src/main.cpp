@@ -413,7 +413,7 @@ std::pair<std::string, bool> resolveRemoteRoot( const std::string& urlOrPath, bo
                              "clone --depth=1 -q -- " + rw::shSingleQuote( urlOrPath )
                           + " " + rw::shSingleQuote( cacheDir ) + " 2>&1";
     rw::emitTo( stderr, "ripwire: cloning {} → {}\n", urlOrPath.c_str(), cacheDir.c_str() );
-    std::FILE* pipe = popen( cmd.c_str(), "r" );
+    std::FILE* pipe = rw::popenForHost( cmd, "r" );
     if( !pipe )
     {
         rw::emitRaw( stderr, "ripwire: could not launch git clone (is git on PATH?)\n" );
